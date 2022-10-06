@@ -1,0 +1,399 @@
+1. npm i express mongoose multer cloudinary dotenv cors nodemon
+2. Require all this-> dotenv mongoose -> dotenv.config();
+3. Create .env => MONGO_URI = mongodb://localhost:27017/imgcrud
+4. In the index.js file->
+
+// Connect DB
+mongoose.connect(process.env.MONGO_URI)
+.then(()=>console.log("MongoDB Connected Successfully"))
+.catch(()=>console.log("MongoDB not Connected, Something Wrong"))
+
+// Middleware to Parse Request our Body
+app.use(express.json());
+app.use(cors());
+
+--------------------------------------------------------------------------------------------------
+Run and Check is it working or not..
+
+5. Create Model folder and create a model user.js  
+
+const mongoose = require('mongoose');
+const userSchema = new mongoose.Schema({
+    name:String,
+    avatar:String,
+    cloudinary_id:String
+})
+
+module.exports = mongoose.model("User",userSchema);
+
+
+
+6.  Go to .env and set 
+
+CLOUDINARY_CLOUD_NAME=smmunna
+CLOUDINARY_API_KEY=787922959425432
+CLOUDINARY_API_SECRET =
+
+7. Create a folder "utils" and save cloudinary info in cloudinar.js as rename it and also create multer.js
+
+const cloudinary = require('cloudinary').v2;
+
+cloudinary.config({
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+    api_key: process.env.CLOUDINARY_API_KEY,
+    api_secret: process.env.CLOUDINARY_API_SECRET
+});
+
+module.exports = cloudinary;
+
+-------------------------------------------------------------------------------
+multer.js
+-------------------------------------------------------------------------------
+const multer = require('multer');
+const path = require('path');
+
+// Multer config
+module.exports = multer({
+    storage:multer.diskStorage({}),
+    fileFilter: (req,file,cb)=>{
+        let ext = path.extname(file.originalname);
+        if (ext !== ".jpg" && ext !==".jpeg" && ext !== ".png") {
+            cb(new Error("File type is not supported"),false);
+            return;
+        }
+        cb(null, true);
+    },
+});
+
+8. Make a router folder for creating post, get, put
+
+const router = require('express').Router();
+const cloudinary = require('../utils/cloudinary');
+const upload = require('../utils/multer');
+const User = require('../model/user')
+
+// Post method 
+router.post('/', upload.single('image'), async(req,res)=>{
+    try {
+        const result = await cloudinary.uploader.upload(req.file.path);
+       
+     // Creating an instance of User from model/user.js "User"
+        let user = new User({
+            name: req.body.name,
+            avatar: result.secure_url,
+            cloudinary_id: result.public_id,
+        });
+
+        // Save into the MongoDB
+        await user.save();
+        res.json(user);
+
+
+    } catch (error) {
+        res.send('Image Not Uploaded')
+    }
+})
+
+// Get Request for seeing the Data;
+router.get('/', async(req,res)=>{
+    try {
+        let user = await User.find();
+        res.json(user);
+    } catch (error) {
+        res.send('No data found')
+    }
+})
+
+
+// Delete by Id;
+router.delete('/:id',async(req,res)=>{
+    try {
+        let user = await User.findById(req.params.id);
+        // Delete from Cloudinary;
+        await cloudinary.uploader.destroy(user.cloudinary_id);
+
+        // Delete user from MongoDB
+        await user.remove();
+        res.json(user);
+    } catch (error) {
+        res.send('User not Deleted');
+    }
+})
+
+
+//Get individual user by ID
+router.get('/:id',async(req,res)=>{
+    try {
+        let user = await User.findById(req.params.id);
+        res.json(user);
+    } catch (error) {
+        res.send('User not Found individually');
+    }
+})
+
+
+// Updating the User name , Photo
+router.put('/:id', upload.single("image"), async(req,res)=>{
+    try {
+        let user = await User.findById(req.params.id);
+        await cloudinary.uploader.destroy(user.cloudinary_id);
+
+        const result = await cloudinary.uploader.upload(req.file.path);
+        const data = {
+            name: req.body.name || user.name,
+            avatar: result.secure_url || user.avatar,
+            cloudinary_id: result.public_id || user.cloudinary_id,
+        };
+        user = await User.findByIdAndUpdate(req.params.id, data,{new: true})
+        res.json(user);
+    } catch (error) {
+        res.send('Not Updated');
+    }
+})
+
+module.exports = router;
+
+9. Go to Index.js file and require route file
+
+// Route
+app.use('/user',require('./routes/user'));
+
+
+=-===================-====================-=================-================-==============
+React Page Now;
+=======-============-=====================-=================-================-==============
+===> npm i react-router-dom
+
+1.  Get all Data and work with Delete buttonm update button;
+
+
+import {useEffect, useState} from 'react'
+function Card() {
+  const [user,setUsers] = useState();
+
+  useEffect(()=>{
+    const fetchUsers = async () =>{
+      const res = await fetch(`http://localhost:5000/user`)
+      const data = await res.json();
+      setUsers(data);
+    };
+    fetchUsers();
+  },[])
+
+  return (
+    <div className='body'>
+    <h2>Card</h2>
+    <h2>Fetch All the Image From Here</h2>
+    <button>Fetch Image</button>
+    </div>
+  )
+}
+
+export default Card
+
+-------------Try this with console then go to next Step--------
+
+import React from "react";
+import "../../App.css";
+import { useEffect, useState } from "react";
+import{Link} from 'react-router-dom'
+
+function Card() {
+  const [user, setUsers] = useState();
+
+  useEffect(() => {
+    const fetchUsers = async () => {
+      const res = await fetch(`http://localhost:5000/user`);
+      const data = await res.json();
+      setUsers(data);
+    };
+    fetchUsers();
+  }, []);
+
+  const handleDelete = async (id) =>{
+        try {
+          const res = await fetch(`http://localhost:5000/user/${id}`,{
+            method:"DELETE"
+          })
+          if(res.ok){
+            const updateUser = user.filter((user)=>user._id !== id);
+            setUsers(updateUser);
+          }
+        } catch (error) {
+          console.log('Error occurs');
+        }
+  }
+
+  return (
+    <div className="body">
+      <h2>Card</h2>
+      <h2>Fetch All the Image From Here</h2>
+
+      <button>Fetch Image</button>
+      <div className="row d-flex justify-content-center">
+        <div className="col-lg-6">
+          {user?.map((user) => {
+            return (
+              <div class="card" style={{ width: "18rem" }}>
+                <img src={user.avatar} class="card-img-top" alt="..." />
+
+                <div class="card-body">
+                  <h5 class="card-title">{user.name}</h5>
+                   <Link to={`/certificate/${user._id}`} style={{textDecoration:'none'}} className="btn btn-primary">Edit</Link>
+                  <button className="btn btn-danger" onClick={()=>{handleDelete(user._id)}}>X</button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default Card;
+
+
+
+2.
+
+Add User to MongoDB+Cloudinary with Image;
+---------------------------------------------------------------
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
+
+function Registration() {
+  const navigate = useNavigate();
+  const [data, setData] = useState({
+    name: "",
+    image: "",
+  });
+
+  const handleChange = (name) => (e) => {
+    const value = name === "image" ? e.target.files[0] : e.target.value;
+    setData({ ...data, [name]: value });
+  };
+
+  const handleSubmit = async () => {
+    try {
+      let formData = new FormData();
+      formData.append("image", data.image);
+      formData.append("name", data.name);
+
+      const res = await fetch(`http://localhost:5000/user`, {
+        method: "POST",
+        body: formData,
+      });
+      if (res.ok) {
+        setData({ name: "", image: "" });
+        navigate("/card");
+      }
+    } catch (error) {
+      console.log(error);
+    }
+  };
+
+  return (
+    <div className="body">
+      <h1>Registration</h1>
+      <br />
+      <br />
+      <input
+        type="text"
+        name="name"
+        value={data.name}
+        onChange={handleChange("name")}
+      />
+      <br />
+      <input
+        type="file"
+        name="image"
+        accept="image/*"
+        enctype="multipart/form-data"
+        onChange={handleChange("image")}
+      />
+      <br />
+      <button onClick={handleSubmit}>Add User</button>
+    </div>
+  );
+}
+
+
+3.
+
+Update User ->
+-------------------------------------------------------------------------------------------------------------------
+import React from 'react'
+import {useState,useEffect} from 'react'
+import {useNavigate, useParams} from 'react-router-dom'
+
+ const Certificate = () => {
+  const navigate = useNavigate();
+  const params = useParams();
+
+  const [data, setData] = useState({
+    name: "",
+    image: "",
+  });
+
+  useEffect(()=>{
+    fetch(`http://localhost:5000/user/${params.id}`)
+    .then((res)=> res.json())
+    .then((data)=> setData(data))
+  },[])
+
+  const handleChange = (name) => (e) => {
+    const value = name === "image" ? e.target.files[0] : e.target.value;
+    setData({ ...data, [name]: value });
+  };
+
+  const handleSubmit = async () => {
+    try {
+      let formData = new FormData();
+      formData.append("image", data.image);
+      formData.append("name", data.name);
+
+      const res = await fetch(`http://localhost:5000/user/${params.id}`, {
+        method: "PUT",
+        body: formData,
+      });
+      if (res.ok) {
+        setData({ name: "", image: "" });
+        navigate("/card");
+      }
+    } catch (error) {
+      console.log(error);
+    }
+  };
+
+  return (
+    <div>
+    
+    <h1>Update User</h1>
+      <br />
+      <br />
+      <input
+        type="text"
+        name="name"
+        value={data.name}
+        onChange={handleChange("name")}
+      />
+      <br />
+      <input
+        type="file"
+        name="image"
+        accept="image/*"
+        enctype="multipart/form-data"
+        onChange={handleChange("image")}
+        
+      />
+      <br />
+      <button onClick={handleSubmit}>Update User</button>
+    </div>
+  )
+}
+
+
+export default Certificate
+
+
