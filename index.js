@@ -3,6 +3,7 @@ const app = express()
 const mongoose = require('mongoose')
 const dotenv = require('dotenv')
 dotenv.config();
+const cors = require('cors')
 const port = 5000
 
 // Connect DB
@@ -12,6 +13,7 @@ mongoose.connect(process.env.MONGO_URI)
 
 // Middleware to Parse Request our Body
 app.use(express.json());
+app.use(cors());
 
 // Route
 app.use('/user',require('./routes/user'));
